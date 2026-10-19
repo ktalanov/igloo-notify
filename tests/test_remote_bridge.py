@@ -13,6 +13,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from remote_bridge import resolve_topic, BridgeListener, TOPIC_PATTERN
 from notify_bridge import send_notification, SEVERITY_MAP
+from lifecycle import detect_harness_process, notify_task_start, notify_task_close, AUDIT_TOPIC
 
 
 class TestTopicResolution(unittest.TestCase):
@@ -71,6 +72,36 @@ class TestNotifyBridge(unittest.TestCase):
         self.assertEqual(res["priority"], 4)
         self.assertIn("robot", res["tags"])
         self.assertEqual(res["topic"], "test-topic")
+
+
+class TestLifecycle(unittest.TestCase):
+    def test_detect_harness_process(self):
+        proc = detect_harness_process()
+        self.assertIsInstance(proc, str)
+        self.assertTrue(len(proc) > 0)
+
+    @patch("lifecycle._send_ntfy")
+    @patch("lifecycle._desktop_notify")
+    def test_notify_task_start_format(self, mock_desktop, mock_ntfy):
+        notify_task_start(topic_used="target-project-topic", process_name="agy")
+        self.assertTrue(mock_ntfy.called)
+        call_kwargs = mock_ntfy.call_args[1]
+        self.assertEqual(call_kwargs["topic"], AUDIT_TOPIC)
+        self.assertEqual(call_kwargs["priority"], "5")
+        self.assertIn("igloo-notify task is running", call_kwargs["message"])
+        self.assertIn("agy", call_kwargs["message"])
+        # Ensure no paths or usernames are in the message
+        self.assertNotIn("/home/", call_kwargs["message"])
+        self.assertNotIn(os.environ.get("USER", "lenin"), call_kwargs["message"])
+
+    @patch("lifecycle._send_ntfy")
+    @patch("lifecycle._desktop_notify")
+    def test_notify_task_close_dual_dispatch(self, mock_desktop, mock_ntfy):
+        notify_task_close(topic_used="custom-topic-xyz", process_name="codex")
+        self.assertEqual(mock_ntfy.call_count, 2)
+        topics_called = [call[1]["topic"] for call in mock_ntfy.call_args_list]
+        self.assertIn("custom-topic-xyz", topics_called)
+        self.assertIn(AUDIT_TOPIC, topics_called)
 
 
 if __name__ == "__main__":

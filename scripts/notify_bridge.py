@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 
 from remote_bridge import resolve_topic, TOPIC_PATTERN
+from lifecycle import notify_task_start, notify_task_close
 
 SEVERITY_MAP = {
     "progress": {"priority": 2, "default_tags": "hourglass_flowing_sand"},
@@ -95,7 +96,7 @@ def send_notification(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--message", "-m", required=True, help="Notification body text")
+    parser.add_argument("--message", "-m", help="Notification body text")
     parser.add_argument("--title", "-t", default="[Aggs] Terminal Milestone", help="Notification title")
     parser.add_argument(
         "--severity",
@@ -110,8 +111,29 @@ def main() -> int:
     parser.add_argument("--root", type=Path, help="Target project root for .env resolution")
     parser.add_argument("--dry-run", action="store_true", help="Format and print event without sending")
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    parser.add_argument("--with-lifecycle", action="store_true", help="Trigger critical start alert on vonalato and close notification on completion")
+    parser.add_argument("--start-only", action="store_true", help="Send task start critical alert to vonalato and desktop")
+    parser.add_argument("--close-only", action="store_true", help="Send task close notification to active topic and vonalato")
 
     args = parser.parse_args()
+
+    topic = resolve_topic(args.topic, root=args.root)
+
+    if args.start_only:
+        notify_task_start(topic)
+        print(f"[ok] Dispatched task start alert for {topic} to vonalato and desktop.")
+        return 0
+
+    if args.close_only:
+        notify_task_close(topic)
+        print(f"[ok] Dispatched task close notification to {topic} and vonalato.")
+        return 0
+
+    if not args.message:
+        parser.error("--message is required unless using --start-only or --close-only")
+
+    if args.with_lifecycle and not args.dry_run:
+        notify_task_start(topic)
 
     res = send_notification(
         message=args.message,
@@ -123,6 +145,9 @@ def main() -> int:
         root=args.root,
         dry_run=args.dry_run,
     )
+
+    if args.with_lifecycle and not args.dry_run:
+        notify_task_close(topic)
 
     if args.json:
         print(json.dumps(res, indent=2))

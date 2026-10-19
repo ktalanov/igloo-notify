@@ -20,6 +20,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from lifecycle import lifecycle_session
+
 TOPIC_PATTERN = re.compile(
     r"^(?:[A-Za-z0-9_-]{1,64}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\Z"
 )
@@ -118,63 +120,64 @@ class BridgeListener:
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
-        while self._running:
-            try:
-                req = urllib.request.Request(
-                    stream_url,
-                    headers={"User-Agent": "igloo-notify-bridge/1.0"},
-                )
-                with urllib.request.urlopen(req, timeout=90) as response:
-                    print(f"[+] Connected to live event stream on {self.topic}", flush=True)
-                    backoff = 2
+        with lifecycle_session(self.topic):
+            while self._running:
+                try:
+                    req = urllib.request.Request(
+                        stream_url,
+                        headers={"User-Agent": "igloo-notify-bridge/1.0"},
+                    )
+                    with urllib.request.urlopen(req, timeout=90) as response:
+                        print(f"[+] Connected to live event stream on {self.topic}", flush=True)
+                        backoff = 2
 
-                    for line in response:
-                        if not self._running:
-                            break
-                        line_str = line.decode("utf-8").strip()
-                        if not line_str:
-                            continue
-                        try:
-                            event = json.loads(line_str)
-                        except json.JSONDecodeError:
-                            continue
+                        for line in response:
+                            if not self._running:
+                                break
+                            line_str = line.decode("utf-8").strip()
+                            if not line_str:
+                                continue
+                            try:
+                                event = json.loads(line_str)
+                            except json.JSONDecodeError:
+                                continue
 
-                        if event.get("event") != "message":
-                            continue
+                            if event.get("event") != "message":
+                                continue
 
-                        msg_id = event.get("id")
-                        if msg_id and msg_id in self.seen_ids:
-                            continue
+                            msg_id = event.get("id")
+                            if msg_id and msg_id in self.seen_ids:
+                                continue
 
-                        if self.is_bot_message(event):
+                            if self.is_bot_message(event):
+                                if msg_id:
+                                    self.record_seen(msg_id)
+                                continue
+
                             if msg_id:
                                 self.record_seen(msg_id)
-                            continue
 
-                        if msg_id:
-                            self.record_seen(msg_id)
+                            msg_text = event.get("message", "")
+                            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-                        msg_text = event.get("message", "")
-                        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-                        # Print clean delimited record for the agent harness
-                        print(
-                            f"\n======================================================================\n"
-                            f"🚨 [REMOTE NTFY USER INPUT] 🚨\n"
-                            f"Topic: {self.topic}\n"
-                            f"Time:  {timestamp}\n"
-                            f"ID:    {msg_id}\n"
-                            f"----------------------------------------------------------------------\n"
-                            f"{msg_text}\n"
-                            f"======================================================================\n",
-                            flush=True,
-                        )
-            except (urllib.error.URLError, TimeoutError, OSError) as err:
-                if not self._running:
-                    break
-                print(f"[!] Stream disconnected ({err}), reconnecting in {backoff}s...", flush=True)
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 30)
+                            # Print clean delimited record for the agent harness
+                            print(
+                                f"\n======================================================================\n"
+                                f"🚨 [REMOTE NTFY USER INPUT] 🚨\n"
+                                f"Topic: {self.topic}\n"
+                                f"Time:  {timestamp}\n"
+                                f"ID:    {msg_id}\n"
+                                f"----------------------------------------------------------------------\n"
+                                f"{msg_text}\n"
+                                f"======================================================================\n",
+                                flush=True,
+                            )
+                except (urllib.error.URLError, TimeoutError, OSError) as err:
+                    if not self._running:
+                        break
+                    print(f"[!] Stream disconnected ({err}), reconnecting in {backoff}s...", flush=True)
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 30)
 
         return 0
 

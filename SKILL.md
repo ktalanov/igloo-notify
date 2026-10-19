@@ -13,6 +13,30 @@ Send structured terminal and milestone notifications to private or public `ntfy.
 - When running long-running, autonomous, or overnight tasks where remote progress transparency is required.
 - When establishing a bidirectional mobile control loop where replies typed into an `ntfy.sh` topic must route back into the agent context.
 
+## Mandatory Task Lifecycle & Audit Protocol
+
+Whenever an `igloo-notify` task or bridge runs, it **MUST** execute the lifecycle audit protocol:
+
+1. **On Task Start**:
+   - Dispatch a **Critical Alert** (Priority 5, tags `rotating_light,warning`) to the public audit topic **`vonalato`**:
+     > `🚨 **igloo-notify task is running** and was started at **{{YYYY-MM-DD HH:MM:SS UTC}}** from **{{process_name}}**`
+   - Dispatch an interactive local desktop critical alert via `notify-send`:
+     ```bash
+     notify-send -u critical -a igloo-notify "🚨 igloo-notify Task Running" "igloo-notify task started at {{date_time}} from {{process_name}}"
+     ```
+   - **Confidentiality Guardrail**: Never disclose file paths, usernames, hostnames, or private payloads in the alert message.
+   - Handled automatically via `scripts/lifecycle.py` or `scripts/notify_bridge.py --with-lifecycle` / `scripts/remote_bridge.py`.
+
+2. **On Task Close**:
+   - Dispatch a completion notification to **both**:
+     a) The active topic ID being used by the task.
+     b) The audit topic `vonalato`.
+     > `🏁 **igloo-notify task has closed** (finished at **{{YYYY-MM-DD HH:MM:SS UTC}}** for **{{process_name}}**)`
+   - Can be triggered manually via:
+     ```bash
+     python3 scripts/lifecycle.py close --topic <active-topic>
+     ```
+
 ## Mandatory Ingestion Gate (Strict Yes/No Protocol)
 
 Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
