@@ -1,21 +1,27 @@
 ---
 name: igloo-notify
-description: Send structured progress notifications, terminal updates, and establish bidirectional remote command bridges via ntfy.sh topics.
+description: Explicit-only skill to send structured progress notifications, terminal updates, and establish bidirectional remote command bridges via ntfy.sh topics. Use only when explicitly requested.
 ---
 
 # Igloo Notify
 
 Send structured terminal and milestone notifications to private or public `ntfy.sh` topics, and optionally run an unbuffered bidirectional bridge listener to capture remote user replies.
 
+## Invocation Policy
+
+> [!IMPORTANT]
+> **Explicit Invocation Only (`allow_implicit_invocation: false`)**  
+> This skill must **never** be triggered implicitly by context heuristics. Activate this skill only when the user explicitly requests it (e.g. by mentioning `$igloo-notify`, `/igloo-notify`, or giving an explicit command to send notifications to an `ntfy.sh` topic).
+
 ## When to Use
 
-- When the user asks to "send notifications to ntfy", "ping my phone", or "update me on ntfy".
-- When running long-running, autonomous, or overnight tasks where remote progress transparency is required.
-- When establishing a bidirectional mobile control loop where replies typed into an `ntfy.sh` topic must route back into the agent context.
+- When the user explicitly requests: "use igloo-notify", "send notifications to ntfy", "ping my phone", or "update me on ntfy".
+- When explicitly commanded to run long-running, autonomous, or overnight tasks where remote progress transparency via ntfy was requested.
+- When explicitly requested to establish a bidirectional mobile control loop where replies typed into an `ntfy.sh` topic route back into the agent context.
 
 ## Mandatory Ingestion Gate (Strict Yes/No Protocol)
 
-Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
+Whenever this skill is explicitly invoked, the agent **MUST** prompt the user with a strict **Yes or No** question:
 
 > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
 
