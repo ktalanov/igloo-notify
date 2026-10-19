@@ -6,9 +6,17 @@
 
 ## Current State
 
-- **Version**: 0.1.0 MVP
+- **Version**: 0.2.0
 - **Runtime**: Python 3.10+ (Standard Library only — zero external pip dependencies)
 - **Supported Harnesses**: Antigravity (`agy`), Codex (`codex`), and raw terminal CLI.
+
+## Workflow & Interactive Ingestion Gate
+
+When triggered, the agent asks a strict **Yes or No** question:
+> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+
+- **If Yes**: The agent launches the background bridge daemon (`scripts/remote_bridge.py`), elevating any incoming user responses on the topic to direct instructions/responses to the agent.
+- **If No**: The agent operates in outbound-only mode (`scripts/notify_bridge.py`) without ingesting responses.
 
 ## Setup and Use
 

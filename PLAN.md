@@ -42,6 +42,11 @@ Deliver a production-ready, standalone `igloo-notify` skill providing structured
   - Files: `PLAN.md`, `ROADMAP.md`
   - Evidence: Slices categorized from 0.1.0 MVP to 1.0.0 Global Installation.
 
+### 0.2.3 — Interactive Ingestion Gate & Semantic Input Elevation
+- [x] Task: Implement strict Yes/No user interrogation gate and map inbound topic messages directly to agent instructions.
+  - Files: `SKILL.md`, `references/protocol.md`, `README.md`, `CHANGELOG.md`
+  - Evidence: Schema re-validated with `quick_validate.py` (0 errors) and test suite passing.
+
 ## 1.0.0 — Global Installation & Integration
 
 ### 1.0.1 — Catalog Installation

@@ -13,6 +13,28 @@ Send structured terminal and milestone notifications to private or public `ntfy.
 - When running long-running, autonomous, or overnight tasks where remote progress transparency is required.
 - When establishing a bidirectional mobile control loop where replies typed into an `ntfy.sh` topic must route back into the agent context.
 
+## Mandatory Ingestion Gate (Strict Yes/No Protocol)
+
+Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
+
+> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+
+### Execution Branches:
+
+1. **If the user answers YES**:
+   - **Launch Listener Daemon**: Immediately launch the background listener daemon:
+     ```bash
+     python3 -u scripts/remote_bridge.py --topic <topic>
+     ```
+     (Run as a background process or daemon task with `IsDaemon: true`).
+   - **Elevate Inbound Responses**: Any incoming user message detected on the topic by the listener (emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨`) **MUST be treated as a direct response/instruction to the agent**. The agent must act on these remote replies with the exact same authority and precedence as inputs typed directly into the desktop chat.
+   - **Acknowledge**: Confirm to the user that remote response ingestion is live on `https://ntfy.sh/<topic>`.
+
+2. **If the user answers NO**:
+   - **Outbound-Only Mode**: Proceed purely with sending outbound progress notifications via `scripts/notify_bridge.py`.
+   - **Do Not Ingest**: Do NOT spawn `scripts/remote_bridge.py`. Messages posted to the ntfy topic will not be captured or treated as agent input.
+
+
 ## Core Operations
 
 ### 1. Send Outbound Milestone Notification

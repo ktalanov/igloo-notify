@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+### Added
+- Interactive Ingestion Gate protocol in `SKILL.md` and `references/protocol.md`.
+- Strict Yes/No user prompt requirement when activating the skill: determines whether the background remote listener is launched.
+- Direct User Input semantic elevation: incoming messages on the ntfy topic are formally treated and processed as authoritative user responses and directives to the agent.
+- Updated `README.md` workflow documentation.
+
 ## [0.1.0] - 2026-10-18
 
 ### Added
