@@ -1,0 +1,4 @@
+interface:
+  display_name: "Igloo Notify"
+  short_description: "Send structured terminal/milestone updates and establish remote ntfy bridges"
+  default_prompt: "Send an ntfy notification to the configured project topic"
