@@ -4,3 +4,4 @@ logs/
 .env.*
 !.env.example
 *secrets*.json
+__pycache__/
