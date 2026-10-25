@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Twilio SMS bridge for igloo-notify.
+
+Sends status queries to the user's phone and polls for inbound SMS replies,
+elevating them as direct user commands.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+STATE_DIR = Path.home() / ".cache" / "igloo-notify"
+SEEN_FILE = STATE_DIR / "seen_sms.txt"
+
+
+def get_twilio_credentials() -> tuple[str, str, str, str]:
+    sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_num = os.environ.get("TWILIO_PHONE_NUMBER")
+    to_num = os.environ.get("MY_PHONE_NUMBER")
+
+    if not all([sid, token, from_num, to_num]):
+        secrets_file = Path.home() / ".env.secrets"
+        if secrets_file.is_file():
+            for line in secrets_file.read_text(encoding="utf-8").splitlines():
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    k = k.replace("export", "").strip()
+                    v = v.strip().strip("'\"")
+                    if k == "TWILIO_ACCOUNT_SID" and not sid:
+                        sid = v
+                    elif k == "TWILIO_AUTH_TOKEN" and not token:
+                        token = v
+                    elif k == "TWILIO_PHONE_NUMBER" and not from_num:
+                        from_num = v
+                    elif k == "MY_PHONE_NUMBER" and not to_num:
+                        to_num = v
+
+    if not (sid and token and from_num and to_num):
+        raise ValueError("Missing Twilio credentials or phone numbers")
+
+    # Format numbers with +
+    if not from_num.startswith("+"):
+        from_num = f"+{from_num}"
+    if not to_num.startswith("+"):
+        to_num = f"+{to_num}"
+
+    return sid, token, from_num, to_num
+
+
+def send_sms(body: str) -> dict:
+    sid, token, from_num, to_num = get_twilio_credentials()
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+    data = urllib.parse.urlencode({
+        "To": to_num,
+        "From": from_num,
+        "Body": body,
+    }).encode("utf-8")
+
+    auth_header = base64.b64encode(f"{sid}:{token}".encode("utf-8")).decode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "User-Agent": "igloo-sms-bridge/1.0",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def check_inbound_sms() -> list[dict]:
+    sid, token, from_num, to_num = get_twilio_credentials()
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json?To={urllib.parse.quote(from_num)}&PageSize=10"
+
+    auth_header = base64.b64encode(f"{sid}:{token}".encode("utf-8")).decode("utf-8")
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "User-Agent": "igloo-sms-bridge/1.0",
+        },
+    )
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    seen_ids = set()
+    if SEEN_FILE.is_file():
+        seen_ids = set(line.strip() for line in SEEN_FILE.read_text(encoding="utf-8").splitlines() if line.strip())
+
+    new_messages = []
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        messages = data.get("messages", [])
+        for msg in messages:
+            msg_sid = msg.get("sid")
+            direction = msg.get("direction")
+            sender = msg.get("from")
+            if direction == "inbound" and msg_sid not in seen_ids and sender == to_num:
+                new_messages.append(msg)
+                with open(SEEN_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"{msg_sid}\n")
+
+    return new_messages
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Twilio SMS Bridge for igloo-notify")
+    parser.add_argument("--send", help="Send SMS body to user's phone")
+    parser.add_argument("--check", action="store_true", help="Check for newly received SMS replies")
+    parser.add_argument("--query-status", action="store_true", help="Send standard 5-minute health check SMS")
+    args = parser.parse_args()
+
+    if args.send:
+        res = send_sms(args.send)
+        print(f"[✓] SMS Sent: {res.get('sid')} -> {res.get('to')}")
+
+    if args.query_status:
+        body = "Hi Talanov, this is Aggs. Did we fix it, or do we still have issues? Reply to instruct me."
+        res = send_sms(body)
+        print(f"[✓] Status Query SMS Sent: {res.get('sid')} -> {res.get('to')}")
+
+    if args.check:
+        new_msgs = check_inbound_sms()
+        if not new_msgs:
+            print("[*] No new inbound SMS.")
+        for msg in new_msgs:
+            print(
+                f"\n======================================================================\n"
+                f"🚨 [REMOTE SMS USER INPUT] 🚨\n"
+                f"From: {msg.get('from')}\n"
+                f"Time: {msg.get('date_sent')}\n"
+                f"SID:  {msg.get('sid')}\n"
+                f"----------------------------------------------------------------------\n"
+                f"{msg.get('body')}\n"
+                f"======================================================================\n"
+            )
+
+
+if __name__ == "__main__":
+    main()
