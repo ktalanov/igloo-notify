@@ -7,6 +7,8 @@ description: Send structured progress notifications, terminal updates, and estab
 
 Send structured terminal and milestone notifications to private or public `ntfy.sh` topics, and optionally run an unbuffered bidirectional bridge listener to capture remote user replies.
 
+The skill does not use tokens, it uses a deterministic Python script. It is designed to remain completely harness-agnostic, with initial reference implementation tested on Antigravity (`agy`).
+
 ## When to Use
 
 - When the user asks to "send notifications to ntfy", "ping my phone", or "update me on ntfy".
@@ -37,11 +39,39 @@ Whenever an `igloo-notify` task or bridge runs, it **MUST** execute the lifecycl
      python3 scripts/lifecycle.py close --topic <active-topic>
      ```
 
+## Onboarding, Topic Selection & Verification Handshake
+
+When activating the skill, the agent guides the user through the onboarding sequence:
+
+1. **Onboarding & Subscriptions**:
+   - Briefly explain how `ntfy.sh` works: browser push notifications are supported, Linux environments use native `notify-send`, and mobile users can install the open-source ntfy app from Google Play (or iOS App Store).
+   - If the user needs more details, provide direct links to the official [ntfy.sh documentation](https://docs.ntfy.sh/).
+2. **Security & Exposure Warning**:
+   - Inform the user that anyone who guesses or discovers the topic can read traffic between the agent and user, and potentially inject instructions into the session.
+3. **Topic Provisioning**:
+   - Ask the user whether they wish to provide an existing topic, have the skill auto-generate one, or dispatch topic credentials via SMS.
+   - If auto-generation is chosen, offer suffix lengths of 4, 6, 8, or 12 alphanumeric characters.
+   - Present the entropy and brute-force crack estimate assuming an average desktop computer running 24/7:
+     - **4 characters**: ~23.82 bits ($1.48 \times 10^7$ combinations, ~0.15s)
+     - **6 characters**: ~35.73 bits ($5.68 \times 10^{10}$ combinations, ~9.5 min)
+     - **8 characters**: ~47.63 bits ($2.18 \times 10^{14}$ combinations, ~25.2 days)
+     - **12 characters**: ~71.45 bits ($3.23 \times 10^{21}$ combinations, ~1.02M years)
+4. **Dual-Channel Verification Handshake**:
+   - To confirm channel synchronization, execute `fortune rules-of-acquisition` and simultaneously publish the identical Ferengi Rule of Acquisition to desktop chat and the ntfy topic:
+     ```text
+     🤖 📻 **Hi $USER!** A bi-directional bridge has been set up at **$(date)**. Remember:
+
+     💰 {{rule of acquisition}}
+     ```
+
 ## Mandatory Ingestion Gate (Strict Yes/No Protocol)
 
 Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
 
 > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+
+- **Waiting Timeout**: When awaiting the user's decision, default to **5 minutes (300 seconds)** before falling back.
+- **Answer Flexibility**: Both binary yes/no and structured multiple-choice with freeform input are supported.
 
 ### Execution Branches:
 
@@ -58,6 +88,17 @@ Whenever this skill is triggered (either explicitly by user request or implicitl
    - **Outbound-Only Mode**: Proceed purely with sending outbound progress notifications via `scripts/notify_bridge.py`.
    - **Do Not Ingest**: Do NOT spawn `scripts/remote_bridge.py`. Messages posted to the ntfy topic will not be captured or treated as agent input.
 
+## Ephemeral Bridge Teardown
+
+Upon terminating the session or listener daemon, output an ephemeral summary containing:
+- Process ID (PID) of the listener daemon.
+- Total active bridge duration.
+- Final state cache file path.
+
+## Privilege & Password Safety Boundaries
+
+- **Passwordless Sudo**: If the environment permits passwordless sudo, inform the user in local desktop chat only. Never broadcast privilege details over public ntfy topics.
+- **Password Prohibition**: The agent strictly refuses to accept or process any passwords transmitted over ntfy. If a password is submitted, immediately reject execution and advise the user to delete the message.
 
 ## Core Operations
 
@@ -89,7 +130,7 @@ python3 scripts/notify_bridge.py --topic custom-topic --message "Update message"
 To ingest remote instructions from the user on an `ntfy.sh` topic back into the agent session, launch `scripts/remote_bridge.py` as a background daemon:
 
 ```bash
-python3 -u scripts/remote_bridge.py --topic vonalato
+python3 -u scripts/remote_bridge.py --topic <topic>
 ```
 
 The listener:

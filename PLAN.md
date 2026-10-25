@@ -47,6 +47,30 @@ Deliver a production-ready, standalone `igloo-notify` skill providing structured
   - Files: `SKILL.md`, `references/protocol.md`, `README.md`, `CHANGELOG.md`
   - Evidence: Schema re-validated with `quick_validate.py` (0 errors) and test suite passing.
 
+## 0.3.0 — Dynamic Topics, Security Handshake & Invariants
+
+### 0.3.1 — Alphanumeric Topic Generator & Entropy Module
+- [x] Task: Implement cryptographically secure alphanumeric suffix generator and base62 entropy calculator.
+  - Files: `scripts/topic_generator.py`
+  - Command: `python3 -m unittest discover tests`
+  - Evidence: 1,000 samples verified with zero forbidden characters (`'`, `=`, `!`, `/`).
+
+### 0.3.2 — Zero-Token Invariant & Hygiene Test Suite
+- [x] Task: Add automated AST audit ensuring zero LLM SDK imports and token-free deterministic Python execution.
+  - Files: `tests/test_invariants.py`
+  - Command: `python3 -m unittest discover tests`
+  - Evidence: 16/16 unit tests passing (0.029s).
+
+### 0.3.3 — Onboarding Sequence, Dual Handshake & Privilege Boundaries
+- [x] Task: Document 5-minute prompt timeout, ephemeral teardown summaries, fortune verification handshake, and sudo safety boundaries.
+  - Files: `SKILL.md`, `README.md`, `AGENTS.md`, `CHANGELOG.md`
+  - Evidence: Validator returned `Skill is valid!` with 0 errors.
+
+### 0.3.4 — GitHub Tracking Issues & Governance
+- [x] Task: Track dynamic topic generation and 5-minute timeout / sudo guardrails on GitHub.
+  - Files: `ktalanov/igloo-notify#1`, `ktalanov/igloo-notify#2`
+  - Evidence: Issues #1 and #2 created with required labels (`bugfix`, `documentation`, `feature`, `p3`, `feature request`).
+
 ## 1.0.0 — Global Installation & Integration
 
 ### 1.0.1 — Catalog Installation

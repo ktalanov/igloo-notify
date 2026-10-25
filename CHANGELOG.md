@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
+### Added
+- `scripts/topic_generator.py`: Deterministic alphanumeric suffix generation, base62 entropy calculation, and crack time estimations.
+- `tests/test_invariants.py`: Invariant test suite verifying zero LLM token consumption and strict alphanumeric character hygiene.
+- Onboarding sequence and dual-channel verification handshake via `fortune rules-of-acquisition` in `SKILL.md` and `README.md`.
+- 5-minute (300-second) interactive response timeout specification.
+- Ephemeral bridge teardown summary protocol (PID, duration, cache).
+- Sudo privilege boundaries: local desktop chat disclosure only, absolute prohibition of passwords submitted via ntfy.
+- Explicit project commands, architecture, and boundary contracts in `AGENTS.md`.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added
