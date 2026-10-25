@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Resolved unattended message ingestion deadlock in turn-based agent harnesses by introducing the `--once` single-shot relay flag in `scripts/remote_bridge.py`. Exits immediately upon ingesting one message, firing a native harness completion wakeup event. (Closes #3).
+
 ## [0.3.0] - 2026-10-25
 
 ### Added

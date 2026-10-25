@@ -127,15 +127,21 @@ python3 scripts/notify_bridge.py --topic custom-topic --message "Update message"
 
 ### 2. Launch Bidirectional Remote Bridge Listener
 
-To ingest remote instructions from the user on an `ntfy.sh` topic back into the agent session, launch `scripts/remote_bridge.py` as a background daemon:
+To ingest remote instructions from the user on an `ntfy.sh` topic back into the agent session, launch `scripts/remote_bridge.py`:
 
 ```bash
+# Daemon mode: continuous streaming for local inspection
 python3 -u scripts/remote_bridge.py --topic <topic>
+
+# Single-shot relay mode (recommended for reactive agent loops):
+# Exits immediately upon ingesting one message to trigger harness task completion
+python3 -u scripts/remote_bridge.py --topic <topic> --once
 ```
 
 The listener:
 - Filters out bot-originated messages automatically to prevent reflection loops.
 - Delimits and flushes incoming user messages to standard output immediately.
+- Supports `--once` single-shot relay execution to prevent agent sleep deadlocks in turn-based harnesses.
 - Reconnects automatically with exponential backoff on transient network interruptions.
 
 ## Security & Protocol Guardrails

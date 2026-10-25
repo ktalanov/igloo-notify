@@ -72,13 +72,14 @@ def resolve_topic(override: str | None = None, root: Path | None = None) -> str:
 
 
 class BridgeListener:
-    def __init__(self, topic: str, state_dir: Path | None = None):
+    def __init__(self, topic: str, state_dir: Path | None = None, once: bool = False):
         self.topic = topic
         self.state_dir = Path(state_dir or (Path.home() / ".cache" / "igloo-notify")).resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.seen_file = self.state_dir / f"seen_{self.topic}.txt"
         self.seen_ids = self._load_seen()
         self._running = True
+        self.once = once
 
     def _load_seen(self) -> set[str]:
         if self.seen_file.is_file():
@@ -172,6 +173,9 @@ class BridgeListener:
                                 f"======================================================================\n",
                                 flush=True,
                             )
+                            if self.once:
+                                self._running = False
+                                break
                 except (urllib.error.URLError, TimeoutError, OSError) as err:
                     if not self._running:
                         break
@@ -187,10 +191,11 @@ def main() -> int:
     parser.add_argument("--topic", help="Topic override (defaults to environment or vonalato)")
     parser.add_argument("--root", type=Path, help="Target repository root")
     parser.add_argument("--state-dir", type=Path, help="State directory for deduplication log")
+    parser.add_argument("--once", action="store_true", help="Exit immediately after receiving one message")
     args = parser.parse_args()
 
     topic = resolve_topic(args.topic, root=args.root)
-    listener = BridgeListener(topic, state_dir=args.state_dir)
+    listener = BridgeListener(topic, state_dir=args.state_dir, once=args.once)
     return listener.run()
 
 
