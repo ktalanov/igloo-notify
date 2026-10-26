@@ -14,11 +14,19 @@ The skill does not use tokens, it uses a deterministic Python script. It is desi
 
 ## Workflow & Interactive Ingestion Gate
 
-When triggered, the agent asks a strict **Yes or No** question:
-> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+When triggered, the agent executes a structured two-stage onboarding gate:
+1. **Authority Gate**: *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+2. **Scope Choice**: Using a structured question form, asks whether to accept *any* general commands or strictly responses to prompted questions.
 
-- **If Yes**: The agent launches the background bridge daemon (`scripts/remote_bridge.py`), elevating any incoming user responses on the topic to direct instructions/responses to the agent.
-- **If No**: The agent operates in outbound-only mode (`scripts/notify_bridge.py`) without ingesting responses.
+- **If Yes**: Launches `scripts/remote_bridge.py` (`--once --auto-ack` or continuous daemon), elevating incoming messages to direct user instructions.
+- **If No**: Operates in outbound-only mode (`scripts/notify_bridge.py`).
+
+### Inbound Echo & Immediate Acknowledgment Protocol
+
+Upon receiving an inbound user message via ntfy.sh or Twilio SMS:
+- **Verbatim Chat Echo**: Prints `**User SMS received:** <text>` or `**User NTFY received:** <text>` immediately into the session chat.
+- **Channel Acknowledgment**: Dispatches an instant acknowledgment back to the user: `Got your message about {subject}!`.
+- **5-Minute Status Cadence**: Summarizes recent non-read-only GitHub mutations or codebase edits to `vonalato-dev` every 5 minutes.
 
 ### Interactive Timing & Ephemeral Summaries
 

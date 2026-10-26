@@ -11,7 +11,21 @@ from unittest.mock import patch, MagicMock
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from remote_bridge import resolve_topic, BridgeListener, TOPIC_PATTERN
+from remote_bridge import (
+    resolve_topic,
+    BridgeListener,
+    TOPIC_PATTERN,
+    format_ntfy_chat_echo,
+    extract_subject,
+    acknowledge_ntfy,
+    contains_sensitive_content,
+)
+from sms_bridge import (
+    format_sms_chat_echo,
+    extract_subject as extract_sms_subject,
+    acknowledge_sms,
+    contains_sensitive_content as contains_sensitive_sms,
+)
 from notify_bridge import send_notification, SEVERITY_MAP
 from lifecycle import detect_harness_process, notify_task_start, notify_task_close, AUDIT_TOPIC
 
@@ -61,6 +75,74 @@ class TestBridgeListener(unittest.TestCase):
     def test_once_flag_behavior(self):
         once_listener = BridgeListener(topic="test-topic", state_dir=Path("/tmp/igloo_notify_test"), once=True)
         self.assertTrue(once_listener.once)
+
+    def test_chat_echo_formatting(self):
+        ntfy_echo = format_ntfy_chat_echo("build the package now")
+        self.assertEqual(ntfy_echo, "**User NTFY received:** build the package now")
+
+        sms_echo = format_sms_chat_echo("deploy to staging server")
+        self.assertEqual(sms_echo, "**User SMS received:** deploy to staging server")
+
+    def test_extract_subject(self):
+        # Concise input
+        subj1 = extract_subject("deploy to staging server")
+        self.assertEqual(subj1, "deploy to staging server")
+
+        # Long input truncated to max_words with ellipsis
+        subj2 = extract_subject("can you please run the integration tests across all servers right now")
+        self.assertEqual(subj2, "can you please run the integration...")
+
+        # Trailing punctuation cleaned
+        subj3 = extract_subject("is the build done yet?")
+        self.assertEqual(subj3, "is the build done yet")
+
+        # Empty string fallback
+        subj4 = extract_subject("   ")
+        self.assertEqual(subj4, "your update")
+
+        # Sensitive password / credential detection and sanitization
+        self.assertTrue(contains_sensitive_content("my password is hunter2"))
+        self.assertTrue(contains_sensitive_content("export API_KEY=abc123secret"))
+        self.assertTrue(contains_sensitive_content("here is my private_key"))
+        self.assertTrue(contains_sensitive_sms("my password is hunter2"))
+        self.assertFalse(contains_sensitive_content("please check token usage in ledger"))
+
+        subj_sensitive = extract_subject("my password is hunter2")
+        self.assertEqual(subj_sensitive, "[sensitive content redacted]")
+
+    @patch("urllib.request.urlopen")
+    def test_acknowledge_ntfy(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"id": "ack-123"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        res = acknowledge_ntfy("test-topic", "deploying staging")
+        self.assertTrue(mock_urlopen.called)
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn("Got your message about deploying staging!", req.data.decode("utf-8"))
+        self.assertEqual(req.headers["Title"], "[Aggs] Receipt Acknowledged")
+
+    @patch("urllib.request.urlopen")
+    def test_acknowledge_ntfy_sensitive(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"id": "ack-sec"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        res = acknowledge_ntfy("test-topic", "[sensitive content redacted]", is_sensitive=True)
+        self.assertTrue(mock_urlopen.called)
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn("Credentials submitted over remote topic are strictly prohibited", req.data.decode("utf-8"))
+        self.assertEqual(req.headers["Title"], "[Aggs] Security Alert: Credential Rejected")
+        self.assertEqual(req.headers["Priority"], "4")
+
+    def test_scope_initialization(self):
+        listener_full = BridgeListener("test-topic", scope="full")
+        self.assertEqual(listener_full.scope, "full")
+
+        listener_restricted = BridgeListener("test-topic", scope="restricted")
+        self.assertEqual(listener_restricted.scope, "restricted")
 
 
 class TestNotifyBridge(unittest.TestCase):

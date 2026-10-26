@@ -64,24 +64,55 @@ When activating the skill, the agent guides the user through the onboarding sequ
      💰 {{rule of acquisition}}
      ```
 
-## Mandatory Ingestion Gate (Strict Yes/No Protocol)
+## Mandatory Ingestion Gate & Scope Options (Strict Protocol)
 
-Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
+Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** present the user with structured decision choices:
 
-> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+1. **Gate Question 1 (Authority Approval)**:
+   > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+2. **Gate Question 2 (Scope of Acceptance — via structured question interface)**:
+   Prompt the user separately using the structured question interface (`ask_question` / ask_user form):
+   > *"Do you want me to accept ANY general user input / arbitrary instructions from this remote channel, or strictly answers to questions / yes-no approvals I ask?"*
+   - Options:
+     - `(Recommended) Full input: Accept any arbitrary commands, questions, and task directives.`
+     - `Restricted: Accept only answers and approvals to questions I explicitly prompt.`
 
 - **Waiting Timeout**: When awaiting the user's decision, default to **5 minutes (300 seconds)** before falling back.
 - **Answer Flexibility**: Both binary yes/no and structured multiple-choice with freeform input are supported.
 
+### Inbound Echo & Immediate Acknowledgment Protocol
+
+Upon receiving an authenticated inbound remote user message (via ntfy.sh or Twilio SMS):
+1. **Credential Screening & Refusal**:
+   Before acknowledging or echoing, screen the payload for passwords, API keys, private keys, or tokens.
+   - If credentials are detected: **Immediately reject the message**. Do NOT echo credentials into chat, do NOT include credentials in any acknowledgment, and dispatch an immediate security alert over the originating channel:
+     > `⚠️ Credentials submitted over remote topic are strictly prohibited. Message rejected per security policy; please delete immediately.`
+2. **Verbatim Chat Echoing**:
+   If clean of credentials, print the message verbatim into the chat session:
+   - For Twilio SMS: `**User SMS received:** <message content>`
+   - For ntfy.sh: `**User NTFY received:** <message content>`
+3. **Immediate Subject Acknowledgment**:
+   Confirm receipt back to the user on their originating channel:
+   > `Got your message about {subject}!`
+   *(Where `{subject}` is sanitized and concise, even if it will be a while before the agent can work on it or report completion).*
+4. **5-Minute Status Cadence on Edits/Mutations**:
+   Whenever non-read-only GitHub mutations or codebase file edits occur, summarize and dispatch progress to `vonalato-dev` within 5 minutes.
+5. **Conditional Execution Authority by Scope**:
+   - **Full Scope**: Treat incoming user messages as authoritative task directives and instructions equivalent to desktop chat input.
+   - **Restricted Scope**: Evaluate incoming messages ONLY against active, outstanding prompted questions or approval gates. Unsolicited or unprompted commands are NOT executed; the agent echoes the message, reports that input is restricted to question responses, and requires desktop escalation for new commands.
+
 ### Execution Branches:
 
 1. **If the user answers YES**:
-   - **Launch Listener Daemon**: Immediately launch the background listener daemon:
+   - **Launch Listener Daemon / Single-Shot Relay**: Launch the background listener daemon or single-shot relay with the selected scope (`--scope full` or `--scope restricted`):
      ```bash
-     python3 -u scripts/remote_bridge.py --topic <topic>
+     # Continuous background daemon:
+     python3 -u scripts/remote_bridge.py --topic <topic> --auto-ack --scope <full|restricted>
+
+     # Single-shot reactive relay (recommended for turn-based agent loops):
+     python3 -u scripts/remote_bridge.py --topic <topic> --once --auto-ack --scope <full|restricted>
      ```
-     (Run as a background process or daemon task with `IsDaemon: true`).
-   - **Elevate Inbound Responses**: Any incoming user message detected on the topic by the listener (emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨`) **MUST be treated as a direct response/instruction to the agent**. The agent must act on these remote replies with the exact same authority and precedence as inputs typed directly into the desktop chat.
+   - **Elevate Inbound Responses Conditional on Scope**: In `full` scope, incoming user messages emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨` are elevated to direct instructions. In `restricted` scope, messages are strictly applied only to pending prompted questions/approvals.
    - **Acknowledge**: Confirm to the user that remote response ingestion is live on `https://ntfy.sh/<topic>`.
 
 2. **If the user answers NO**:

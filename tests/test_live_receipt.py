@@ -38,8 +38,7 @@ class TestNtfyMessageReceipt(unittest.TestCase):
 
         self.assertIsNotNone(sent_msg_id, "ntfy.sh should return a message ID upon publishing")
 
-        # 3. Poll ntfy.sh to verify message receipt (using since=10m)
-        time.sleep(0.5)
+        # 3. Poll ntfy.sh to verify message receipt (using since=10m with retry for network jitter)
         poll_url = f"https://ntfy.sh/{test_topic}/json?poll=1&since=10m"
         poll_req = urllib.request.Request(
             poll_url,
@@ -47,17 +46,25 @@ class TestNtfyMessageReceipt(unittest.TestCase):
         )
 
         received_messages = []
-        with urllib.request.urlopen(poll_req, timeout=15) as resp:
-            for line in resp:
-                line_str = line.decode("utf-8").strip()
-                if not line_str:
-                    continue
-                try:
-                    event = json.loads(line_str)
-                    if event.get("event") == "message":
-                        received_messages.append(event)
-                except json.JSONDecodeError:
-                    continue
+        for _ in range(5):
+            time.sleep(1.0)
+            received_messages = []
+            try:
+                with urllib.request.urlopen(poll_req, timeout=15) as resp:
+                    for line in resp:
+                        line_str = line.decode("utf-8").strip()
+                        if not line_str:
+                            continue
+                        try:
+                            event = json.loads(line_str)
+                            if event.get("event") == "message":
+                                received_messages.append(event)
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                pass
+            if received_messages:
+                break
 
         # 4. Verify message content and listener classification
         self.assertGreaterEqual(len(received_messages), 1, "Should receive at least one message from topic")

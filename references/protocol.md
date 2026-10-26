@@ -34,16 +34,35 @@ To prevent infinite message echoing between the agent and the ntfy pub/sub strea
 
 ## Interactive Ingestion Gate & Remote Input Elevation Protocol
 
-### 1. Mandatory Strict Yes/No Gate
-Before spawning a background listener or ingesting inbound responses, the agent MUST ask the user:
-> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+### 1. Mandatory Structured Ingestion Gate
+Before spawning a background listener or ingesting inbound responses, the agent MUST present the two-stage approval gate:
+1. Authority Confirmation:
+   > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+2. Input Scope Selection (via `ask_question` / ask_user form):
+   > *"Do you want me to accept ANY general user input / arbitrary instructions from this remote channel, or strictly answers to questions / yes-no approvals I ask?"*
+   - `Full input`: Accepts any arbitrary commands, questions, and task directives.
+   - `Restricted`: Accepts only answers and approvals to explicitly prompted questions.
 
-### 2. User Approval ('Yes')
-- Spawns `scripts/remote_bridge.py --topic <topic>` as a daemon task.
-- Establishes full semantic input equivalence: all incoming events tagged `🚨 [REMOTE NTFY USER INPUT] 🚨` are treated directly as user instructions to the agent.
-- The agent must react to inbound user commands by executing requested tools, querying information, or steering ongoing operations without requiring separate confirmation.
+### 2. Inbound Chat Echoing & Immediate Acknowledgment Protocol
+Whenever an inbound user message arrives from ntfy.sh or Twilio SMS:
+- **Credential Screening**: Screen incoming messages for sensitive passwords, API keys, and bearer tokens. If detected, reject the message immediately, emit a security warning, and do NOT echo or reflect the credential back in acknowledgments.
+- **Verbatim Echo**: For non-sensitive messages, output the message verbatim into the chat session:
+  - SMS: `**User SMS received:** <verbatim message>`
+  - NTFY: `**User NTFY received:** <verbatim message>`
+- **Channel Acknowledgment**: Dispatch an immediate confirmation on the originating channel:
+  `Got your message about {subject}!` (or a credential rejection notice if sensitive).
+- **5-Minute Status Cadence**: Summarize non-read-only GitHub mutations or codebase edits to `vonalato-dev` within 5 minutes.
+- **Scope-Conditional Execution**:
+  - `Full scope`: Treat elevated commands as direct input into the model's active task queue.
+  - `Restricted scope`: Apply incoming messages strictly to outstanding prompted questions/approvals. Do not execute unsolicited task instructions without desktop verification.
 
-### 3. User Rejection ('No')
+### 3. User Approval ('Yes')
+- Spawns `scripts/remote_bridge.py --topic <topic> --auto-ack --scope <full|restricted>` as a daemon or single-shot relay (`--once --auto-ack --scope <full|restricted>`).
+- In full scope, establishes semantic input equivalence: incoming events tagged `🚨 [REMOTE NTFY USER INPUT] 🚨` are treated directly as user instructions to the agent.
+- In restricted scope, incoming events are evaluated only as responses to open prompted questions/approvals.
+- The agent reacts to authorized inbound commands by executing requested tools, querying information, or steering ongoing operations.
+
+### 4. User Rejection ('No')
 - The agent operates in outbound notification mode only via `scripts/notify_bridge.py`.
 - No listener daemon is started. Any external events posted to the topic are ignored and not piped into the conversation context.
 
