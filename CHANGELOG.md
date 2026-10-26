@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inbound verbatim chat echoing: `**User SMS received:** <text>` and `**User NTFY received:** <text>`.
 - Standardized immediate subject receipt acknowledgment: `Got your message about {subject}!` on originating channel via `--auto-ack` flag in `scripts/remote_bridge.py` and `scripts/sms_bridge.py`.
 - 5-minute notification cadence summarizing non-read-only GitHub mutations and file edits to `vonalato-dev`. (Closes #5).
+- Scope-conditional execution authority (`--scope full` vs `--scope restricted`) in listeners and protocols, enforcing answers-only restrictions when requested.
+- Sensitive credential screening and immediate refusal policy in `--auto-ack`, preventing credential reflection over public topics or SMS.
 
 ### Fixed
 - Resolved unattended message ingestion deadlock in turn-based agent harnesses by introducing the `--once` single-shot relay flag in `scripts/remote_bridge.py`. Exits immediately upon ingesting one message, firing a native harness completion wakeup event. (Closes #3).

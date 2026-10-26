@@ -71,6 +71,17 @@ def resolve_topic(override: str | None = None, root: Path | None = None) -> str:
     return "vonalato"
 
 
+# Pattern matching sensitive credentials, tokens, or passwords
+SENSITIVE_PATTERN = re.compile(
+    r"(?i)\b(?:password|passwd|pwd|private[_-]?key)\b|\b(?:api[_-]?key|bearer\s+[A-Za-z0-9_\-\.]+|auth[_-]?token)\b"
+)
+
+
+def contains_sensitive_content(text: str) -> bool:
+    """Detect if an inbound message appears to contain passwords or credentials."""
+    return bool(SENSITIVE_PATTERN.search(text))
+
+
 def format_ntfy_chat_echo(body: str) -> str:
     """Format inbound ntfy text verbatim for the chat stream."""
     return f"**User NTFY received:** {body}"
@@ -78,6 +89,9 @@ def format_ntfy_chat_echo(body: str) -> str:
 
 def extract_subject(text: str, max_words: int = 6) -> str:
     """Extract a concise subject summary from an inbound message for acknowledgments."""
+    if contains_sensitive_content(text):
+        return "[sensitive content redacted]"
+
     cleaned = " ".join(text.strip().split())
     if not cleaned:
         return "your update"
@@ -89,16 +103,28 @@ def extract_subject(text: str, max_words: int = 6) -> str:
     return subject
 
 
-def acknowledge_ntfy(topic: str, subject: str) -> dict:
+def acknowledge_ntfy(topic: str, subject: str, is_sensitive: bool = False) -> dict:
     """Dispatch immediate standardized receipt confirmation back to user on topic."""
     url = f"https://ntfy.sh/{topic}"
-    ack_message = f"Got your message about {subject}!"
-    headers = {
-        "Title": "[Aggs] Receipt Acknowledged",
-        "Tags": "robot,white_check_mark",
-        "Priority": "3",
-        "User-Agent": "igloo-notify-bridge/1.0",
-    }
+    if is_sensitive:
+        ack_message = (
+            "⚠️ Credentials submitted over remote topic are strictly prohibited. "
+            "Message rejected per security policy; please delete immediately."
+        )
+        headers = {
+            "Title": "[Aggs] Security Alert: Credential Rejected",
+            "Tags": "warning,no_entry",
+            "Priority": "4",
+            "User-Agent": "igloo-notify-bridge/1.0",
+        }
+    else:
+        ack_message = f"Got your message about {subject}!"
+        headers = {
+            "Title": "[Aggs] Receipt Acknowledged",
+            "Tags": "robot,white_check_mark",
+            "Priority": "3",
+            "User-Agent": "igloo-notify-bridge/1.0",
+        }
     req = urllib.request.Request(url, data=ack_message.encode("utf-8"), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -108,7 +134,14 @@ def acknowledge_ntfy(topic: str, subject: str) -> dict:
 
 
 class BridgeListener:
-    def __init__(self, topic: str, state_dir: Path | None = None, once: bool = False, auto_ack: bool = False):
+    def __init__(
+        self,
+        topic: str,
+        state_dir: Path | None = None,
+        once: bool = False,
+        auto_ack: bool = False,
+        scope: str = "full",
+    ):
         self.topic = topic
         self.state_dir = Path(state_dir or (Path.home() / ".cache" / "igloo-notify")).resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +150,7 @@ class BridgeListener:
         self._running = True
         self.once = once
         self.auto_ack = auto_ack
+        self.scope = scope.lower().strip()
 
     def _load_seen(self) -> set[str]:
         if self.seen_file.is_file():
@@ -197,24 +231,42 @@ class BridgeListener:
 
                             msg_text = event.get("message", "")
                             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                            is_sensitive = contains_sensitive_content(msg_text)
                             subject = extract_subject(msg_text)
 
                             if self.auto_ack:
-                                acknowledge_ntfy(self.topic, subject)
+                                acknowledge_ntfy(self.topic, subject, is_sensitive=is_sensitive)
 
-                            # Print clean delimited record for the agent harness with verbatim echo
-                            print(
-                                f"\n======================================================================\n"
-                                f"🚨 [REMOTE NTFY USER INPUT] 🚨\n"
-                                f"Topic: {self.topic}\n"
-                                f"Time:  {timestamp}\n"
-                                f"ID:    {msg_id}\n"
-                                f"Subject: {subject}\n"
-                                f"----------------------------------------------------------------------\n"
-                                f"{format_ntfy_chat_echo(msg_text)}\n"
-                                f"======================================================================\n",
-                                flush=True,
-                            )
+                            if is_sensitive:
+                                # Reject credentials; do not elevate or echo raw credential
+                                print(
+                                    f"\n======================================================================\n"
+                                    f"🚨 [REJECTED CREDENTIAL PAYLOAD] 🚨\n"
+                                    f"Topic: {self.topic}\n"
+                                    f"Time:  {timestamp}\n"
+                                    f"ID:    {msg_id}\n"
+                                    f"Status: REJECTED\n"
+                                    f"----------------------------------------------------------------------\n"
+                                    f"Security Boundary Violation: Inbound message contained passwords/credentials.\n"
+                                    f"Payload discarded. Remote user notified to delete message immediately.\n"
+                                    f"======================================================================\n",
+                                    flush=True,
+                                )
+                            else:
+                                # Print clean delimited record for the agent harness with verbatim echo
+                                print(
+                                    f"\n======================================================================\n"
+                                    f"🚨 [REMOTE NTFY USER INPUT] 🚨\n"
+                                    f"Topic: {self.topic}\n"
+                                    f"Time:  {timestamp}\n"
+                                    f"ID:    {msg_id}\n"
+                                    f"Subject: {subject}\n"
+                                    f"Scope: {self.scope}\n"
+                                    f"----------------------------------------------------------------------\n"
+                                    f"{format_ntfy_chat_echo(msg_text)}\n"
+                                    f"======================================================================\n",
+                                    flush=True,
+                                )
                             if self.once:
                                 self._running = False
                                 break
@@ -235,10 +287,11 @@ def main() -> int:
     parser.add_argument("--state-dir", type=Path, help="State directory for deduplication log")
     parser.add_argument("--once", action="store_true", help="Exit immediately after receiving one message")
     parser.add_argument("--auto-ack", action="store_true", help="Automatically acknowledge incoming message on topic with 'Got your message about {subject}!'")
+    parser.add_argument("--scope", choices=["full", "restricted"], default="full", help="Scope of accepted input: full (all instructions) or restricted (answers/approvals only)")
     args = parser.parse_args()
 
     topic = resolve_topic(args.topic, root=args.root)
-    listener = BridgeListener(topic, state_dir=args.state_dir, once=args.once, auto_ack=args.auto_ack)
+    listener = BridgeListener(topic, state_dir=args.state_dir, once=args.once, auto_ack=args.auto_ack, scope=args.scope)
     return listener.run()
 
 

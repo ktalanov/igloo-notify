@@ -18,8 +18,14 @@ from remote_bridge import (
     format_ntfy_chat_echo,
     extract_subject,
     acknowledge_ntfy,
+    contains_sensitive_content,
 )
-from sms_bridge import format_sms_chat_echo, extract_subject as extract_sms_subject, acknowledge_sms
+from sms_bridge import (
+    format_sms_chat_echo,
+    extract_subject as extract_sms_subject,
+    acknowledge_sms,
+    contains_sensitive_content as contains_sensitive_sms,
+)
 from notify_bridge import send_notification, SEVERITY_MAP
 from lifecycle import detect_harness_process, notify_task_start, notify_task_close, AUDIT_TOPIC
 
@@ -94,6 +100,16 @@ class TestBridgeListener(unittest.TestCase):
         subj4 = extract_subject("   ")
         self.assertEqual(subj4, "your update")
 
+        # Sensitive password / credential detection and sanitization
+        self.assertTrue(contains_sensitive_content("my password is hunter2"))
+        self.assertTrue(contains_sensitive_content("export API_KEY=abc123secret"))
+        self.assertTrue(contains_sensitive_content("here is my private_key"))
+        self.assertTrue(contains_sensitive_sms("my password is hunter2"))
+        self.assertFalse(contains_sensitive_content("please check token usage in ledger"))
+
+        subj_sensitive = extract_subject("my password is hunter2")
+        self.assertEqual(subj_sensitive, "[sensitive content redacted]")
+
     @patch("urllib.request.urlopen")
     def test_acknowledge_ntfy(self, mock_urlopen):
         mock_resp = MagicMock()
@@ -106,6 +122,27 @@ class TestBridgeListener(unittest.TestCase):
         req = mock_urlopen.call_args[0][0]
         self.assertIn("Got your message about deploying staging!", req.data.decode("utf-8"))
         self.assertEqual(req.headers["Title"], "[Aggs] Receipt Acknowledged")
+
+    @patch("urllib.request.urlopen")
+    def test_acknowledge_ntfy_sensitive(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"id": "ack-sec"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        res = acknowledge_ntfy("test-topic", "[sensitive content redacted]", is_sensitive=True)
+        self.assertTrue(mock_urlopen.called)
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn("Credentials submitted over remote topic are strictly prohibited", req.data.decode("utf-8"))
+        self.assertEqual(req.headers["Title"], "[Aggs] Security Alert: Credential Rejected")
+        self.assertEqual(req.headers["Priority"], "4")
+
+    def test_scope_initialization(self):
+        listener_full = BridgeListener("test-topic", scope="full")
+        self.assertEqual(listener_full.scope, "full")
+
+        listener_restricted = BridgeListener("test-topic", scope="restricted")
+        self.assertEqual(listener_restricted.scope, "restricted")
 
 
 class TestNotifyBridge(unittest.TestCase):

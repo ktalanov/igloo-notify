@@ -45,18 +45,22 @@ Before spawning a background listener or ingesting inbound responses, the agent 
 
 ### 2. Inbound Chat Echoing & Immediate Acknowledgment Protocol
 Whenever an inbound user message arrives from ntfy.sh or Twilio SMS:
-- **Verbatim Echo**: The agent must output the message verbatim into the chat session:
+- **Credential Screening**: Screen incoming messages for sensitive passwords, API keys, and bearer tokens. If detected, reject the message immediately, emit a security warning, and do NOT echo or reflect the credential back in acknowledgments.
+- **Verbatim Echo**: For non-sensitive messages, output the message verbatim into the chat session:
   - SMS: `**User SMS received:** <verbatim message>`
   - NTFY: `**User NTFY received:** <verbatim message>`
-- **Channel Acknowledgment**: The agent immediately dispatches an outbound confirmation on the originating channel:
-  `Got your message about {subject}!`
+- **Channel Acknowledgment**: Dispatch an immediate confirmation on the originating channel:
+  `Got your message about {subject}!` (or a credential rejection notice if sensitive).
 - **5-Minute Status Cadence**: Summarize non-read-only GitHub mutations or codebase edits to `vonalato-dev` within 5 minutes.
-- **Immediate Execution**: Process the elevated user command as direct input into the model's active task queue.
+- **Scope-Conditional Execution**:
+  - `Full scope`: Treat elevated commands as direct input into the model's active task queue.
+  - `Restricted scope`: Apply incoming messages strictly to outstanding prompted questions/approvals. Do not execute unsolicited task instructions without desktop verification.
 
 ### 3. User Approval ('Yes')
-- Spawns `scripts/remote_bridge.py --topic <topic> --auto-ack` as a daemon or single-shot relay (`--once --auto-ack`).
-- Establishes full semantic input equivalence: all incoming events tagged `🚨 [REMOTE NTFY USER INPUT] 🚨` are treated directly as user instructions to the agent.
-- The agent must react to inbound user commands by executing requested tools, querying information, or steering ongoing operations without requiring separate confirmation.
+- Spawns `scripts/remote_bridge.py --topic <topic> --auto-ack --scope <full|restricted>` as a daemon or single-shot relay (`--once --auto-ack --scope <full|restricted>`).
+- In full scope, establishes semantic input equivalence: incoming events tagged `🚨 [REMOTE NTFY USER INPUT] 🚨` are treated directly as user instructions to the agent.
+- In restricted scope, incoming events are evaluated only as responses to open prompted questions/approvals.
+- The agent reacts to authorized inbound commands by executing requested tools, querying information, or steering ongoing operations.
 
 ### 4. User Rejection ('No')
 - The agent operates in outbound notification mode only via `scripts/notify_bridge.py`.

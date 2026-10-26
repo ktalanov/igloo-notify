@@ -83,31 +83,36 @@ Whenever this skill is triggered (either explicitly by user request or implicitl
 ### Inbound Echo & Immediate Acknowledgment Protocol
 
 Upon receiving an authenticated inbound remote user message (via ntfy.sh or Twilio SMS):
-1. **Verbatim Chat Echoing**:
-   The agent MUST immediately print the message verbatim into the chat session before executing tools:
+1. **Credential Screening & Refusal**:
+   Before acknowledging or echoing, screen the payload for passwords, API keys, private keys, or tokens.
+   - If credentials are detected: **Immediately reject the message**. Do NOT echo credentials into chat, do NOT include credentials in any acknowledgment, and dispatch an immediate security alert over the originating channel:
+     > `⚠️ Credentials submitted over remote topic are strictly prohibited. Message rejected per security policy; please delete immediately.`
+2. **Verbatim Chat Echoing**:
+   If clean of credentials, print the message verbatim into the chat session:
    - For Twilio SMS: `**User SMS received:** <message content>`
    - For ntfy.sh: `**User NTFY received:** <message content>`
-2. **Immediate Subject Acknowledgment**:
-   The agent MUST immediately confirm receipt back to the user on their originating channel:
+3. **Immediate Subject Acknowledgment**:
+   Confirm receipt back to the user on their originating channel:
    > `Got your message about {subject}!`
-   *(Where `{subject}` is extracted from the message topic/content, even if it will be a while before the agent can work on it or report completion).*
-3. **5-Minute Status Cadence on Edits/Mutations**:
+   *(Where `{subject}` is sanitized and concise, even if it will be a while before the agent can work on it or report completion).*
+4. **5-Minute Status Cadence on Edits/Mutations**:
    Whenever non-read-only GitHub mutations or codebase file edits occur, summarize and dispatch progress to `vonalato-dev` within 5 minutes.
-4. **Execution Authority**:
-   Treat the message with the exact same authority and precedence as inputs typed directly into the desktop chat.
+5. **Conditional Execution Authority by Scope**:
+   - **Full Scope**: Treat incoming user messages as authoritative task directives and instructions equivalent to desktop chat input.
+   - **Restricted Scope**: Evaluate incoming messages ONLY against active, outstanding prompted questions or approval gates. Unsolicited or unprompted commands are NOT executed; the agent echoes the message, reports that input is restricted to question responses, and requires desktop escalation for new commands.
 
 ### Execution Branches:
 
 1. **If the user answers YES**:
-   - **Launch Listener Daemon / Single-Shot Relay**: Immediately launch the background listener daemon or single-shot relay:
+   - **Launch Listener Daemon / Single-Shot Relay**: Launch the background listener daemon or single-shot relay with the selected scope (`--scope full` or `--scope restricted`):
      ```bash
      # Continuous background daemon:
-     python3 -u scripts/remote_bridge.py --topic <topic> --auto-ack
+     python3 -u scripts/remote_bridge.py --topic <topic> --auto-ack --scope <full|restricted>
 
      # Single-shot reactive relay (recommended for turn-based agent loops):
-     python3 -u scripts/remote_bridge.py --topic <topic> --once --auto-ack
+     python3 -u scripts/remote_bridge.py --topic <topic> --once --auto-ack --scope <full|restricted>
      ```
-   - **Elevate Inbound Responses**: Any incoming user message detected on the topic by the listener (emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨`) **MUST be treated as a direct response/instruction to the agent**.
+   - **Elevate Inbound Responses Conditional on Scope**: In `full` scope, incoming user messages emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨` are elevated to direct instructions. In `restricted` scope, messages are strictly applied only to pending prompted questions/approvals.
    - **Acknowledge**: Confirm to the user that remote response ingestion is live on `https://ntfy.sh/<topic>`.
 
 2. **If the user answers NO**:
