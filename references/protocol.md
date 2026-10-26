@@ -34,16 +34,31 @@ To prevent infinite message echoing between the agent and the ntfy pub/sub strea
 
 ## Interactive Ingestion Gate & Remote Input Elevation Protocol
 
-### 1. Mandatory Strict Yes/No Gate
-Before spawning a background listener or ingesting inbound responses, the agent MUST ask the user:
-> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+### 1. Mandatory Structured Ingestion Gate
+Before spawning a background listener or ingesting inbound responses, the agent MUST present the two-stage approval gate:
+1. Authority Confirmation:
+   > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+2. Input Scope Selection (via `ask_question` / ask_user form):
+   > *"Do you want me to accept ANY general user input / arbitrary instructions from this remote channel, or strictly answers to questions / yes-no approvals I ask?"*
+   - `Full input`: Accepts any arbitrary commands, questions, and task directives.
+   - `Restricted`: Accepts only answers and approvals to explicitly prompted questions.
 
-### 2. User Approval ('Yes')
-- Spawns `scripts/remote_bridge.py --topic <topic>` as a daemon task.
+### 2. Inbound Chat Echoing & Immediate Acknowledgment Protocol
+Whenever an inbound user message arrives from ntfy.sh or Twilio SMS:
+- **Verbatim Echo**: The agent must output the message verbatim into the chat session:
+  - SMS: `**User SMS received:** <verbatim message>`
+  - NTFY: `**User NTFY received:** <verbatim message>`
+- **Channel Acknowledgment**: The agent immediately dispatches an outbound confirmation on the originating channel:
+  `Got your message about {subject}!`
+- **5-Minute Status Cadence**: Summarize non-read-only GitHub mutations or codebase edits to `vonalato-dev` within 5 minutes.
+- **Immediate Execution**: Process the elevated user command as direct input into the model's active task queue.
+
+### 3. User Approval ('Yes')
+- Spawns `scripts/remote_bridge.py --topic <topic> --auto-ack` as a daemon or single-shot relay (`--once --auto-ack`).
 - Establishes full semantic input equivalence: all incoming events tagged `🚨 [REMOTE NTFY USER INPUT] 🚨` are treated directly as user instructions to the agent.
 - The agent must react to inbound user commands by executing requested tools, querying information, or steering ongoing operations without requiring separate confirmation.
 
-### 3. User Rejection ('No')
+### 4. User Rejection ('No')
 - The agent operates in outbound notification mode only via `scripts/notify_bridge.py`.
 - No listener daemon is started. Any external events posted to the topic are ignored and not piped into the conversation context.
 

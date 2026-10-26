@@ -71,8 +71,44 @@ def resolve_topic(override: str | None = None, root: Path | None = None) -> str:
     return "vonalato"
 
 
+def format_ntfy_chat_echo(body: str) -> str:
+    """Format inbound ntfy text verbatim for the chat stream."""
+    return f"**User NTFY received:** {body}"
+
+
+def extract_subject(text: str, max_words: int = 6) -> str:
+    """Extract a concise subject summary from an inbound message for acknowledgments."""
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return "your update"
+    words = cleaned.split()
+    if len(words) <= max_words:
+        subject = cleaned.rstrip(".?!,;:")
+    else:
+        subject = " ".join(words[:max_words]).rstrip(".?!,;:") + "..."
+    return subject
+
+
+def acknowledge_ntfy(topic: str, subject: str) -> dict:
+    """Dispatch immediate standardized receipt confirmation back to user on topic."""
+    url = f"https://ntfy.sh/{topic}"
+    ack_message = f"Got your message about {subject}!"
+    headers = {
+        "Title": "[Aggs] Receipt Acknowledged",
+        "Tags": "robot,white_check_mark",
+        "Priority": "3",
+        "User-Agent": "igloo-notify-bridge/1.0",
+    }
+    req = urllib.request.Request(url, data=ack_message.encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        return {"error": str(e), "status": "failed"}
+
+
 class BridgeListener:
-    def __init__(self, topic: str, state_dir: Path | None = None, once: bool = False):
+    def __init__(self, topic: str, state_dir: Path | None = None, once: bool = False, auto_ack: bool = False):
         self.topic = topic
         self.state_dir = Path(state_dir or (Path.home() / ".cache" / "igloo-notify")).resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -80,6 +116,7 @@ class BridgeListener:
         self.seen_ids = self._load_seen()
         self._running = True
         self.once = once
+        self.auto_ack = auto_ack
 
     def _load_seen(self) -> set[str]:
         if self.seen_file.is_file():
@@ -160,16 +197,21 @@ class BridgeListener:
 
                             msg_text = event.get("message", "")
                             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                            subject = extract_subject(msg_text)
 
-                            # Print clean delimited record for the agent harness
+                            if self.auto_ack:
+                                acknowledge_ntfy(self.topic, subject)
+
+                            # Print clean delimited record for the agent harness with verbatim echo
                             print(
                                 f"\n======================================================================\n"
                                 f"🚨 [REMOTE NTFY USER INPUT] 🚨\n"
                                 f"Topic: {self.topic}\n"
                                 f"Time:  {timestamp}\n"
                                 f"ID:    {msg_id}\n"
+                                f"Subject: {subject}\n"
                                 f"----------------------------------------------------------------------\n"
-                                f"{msg_text}\n"
+                                f"{format_ntfy_chat_echo(msg_text)}\n"
                                 f"======================================================================\n",
                                 flush=True,
                             )
@@ -192,10 +234,11 @@ def main() -> int:
     parser.add_argument("--root", type=Path, help="Target repository root")
     parser.add_argument("--state-dir", type=Path, help="State directory for deduplication log")
     parser.add_argument("--once", action="store_true", help="Exit immediately after receiving one message")
+    parser.add_argument("--auto-ack", action="store_true", help="Automatically acknowledge incoming message on topic with 'Got your message about {subject}!'")
     args = parser.parse_args()
 
     topic = resolve_topic(args.topic, root=args.root)
-    listener = BridgeListener(topic, state_dir=args.state_dir, once=args.once)
+    listener = BridgeListener(topic, state_dir=args.state_dir, once=args.once, auto_ack=args.auto_ack)
     return listener.run()
 
 

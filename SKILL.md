@@ -64,24 +64,50 @@ When activating the skill, the agent guides the user through the onboarding sequ
      💰 {{rule of acquisition}}
      ```
 
-## Mandatory Ingestion Gate (Strict Yes/No Protocol)
+## Mandatory Ingestion Gate & Scope Options (Strict Protocol)
 
-Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** prompt the user with a strict **Yes or No** question:
+Whenever this skill is triggered (either explicitly by user request or implicitly during long-running operations), the agent **MUST** present the user with structured decision choices:
 
-> *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+1. **Gate Question 1 (Authority Approval)**:
+   > *"Should I accept answers / listen for remote replies from you on topic `<topic>` as direct instructions to me? (yes/no)"*
+2. **Gate Question 2 (Scope of Acceptance — via structured question interface)**:
+   Prompt the user separately using the structured question interface (`ask_question` / ask_user form):
+   > *"Do you want me to accept ANY general user input / arbitrary instructions from this remote channel, or strictly answers to questions / yes-no approvals I ask?"*
+   - Options:
+     - `(Recommended) Full input: Accept any arbitrary commands, questions, and task directives.`
+     - `Restricted: Accept only answers and approvals to questions I explicitly prompt.`
 
 - **Waiting Timeout**: When awaiting the user's decision, default to **5 minutes (300 seconds)** before falling back.
 - **Answer Flexibility**: Both binary yes/no and structured multiple-choice with freeform input are supported.
 
+### Inbound Echo & Immediate Acknowledgment Protocol
+
+Upon receiving an authenticated inbound remote user message (via ntfy.sh or Twilio SMS):
+1. **Verbatim Chat Echoing**:
+   The agent MUST immediately print the message verbatim into the chat session before executing tools:
+   - For Twilio SMS: `**User SMS received:** <message content>`
+   - For ntfy.sh: `**User NTFY received:** <message content>`
+2. **Immediate Subject Acknowledgment**:
+   The agent MUST immediately confirm receipt back to the user on their originating channel:
+   > `Got your message about {subject}!`
+   *(Where `{subject}` is extracted from the message topic/content, even if it will be a while before the agent can work on it or report completion).*
+3. **5-Minute Status Cadence on Edits/Mutations**:
+   Whenever non-read-only GitHub mutations or codebase file edits occur, summarize and dispatch progress to `vonalato-dev` within 5 minutes.
+4. **Execution Authority**:
+   Treat the message with the exact same authority and precedence as inputs typed directly into the desktop chat.
+
 ### Execution Branches:
 
 1. **If the user answers YES**:
-   - **Launch Listener Daemon**: Immediately launch the background listener daemon:
+   - **Launch Listener Daemon / Single-Shot Relay**: Immediately launch the background listener daemon or single-shot relay:
      ```bash
-     python3 -u scripts/remote_bridge.py --topic <topic>
+     # Continuous background daemon:
+     python3 -u scripts/remote_bridge.py --topic <topic> --auto-ack
+
+     # Single-shot reactive relay (recommended for turn-based agent loops):
+     python3 -u scripts/remote_bridge.py --topic <topic> --once --auto-ack
      ```
-     (Run as a background process or daemon task with `IsDaemon: true`).
-   - **Elevate Inbound Responses**: Any incoming user message detected on the topic by the listener (emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨`) **MUST be treated as a direct response/instruction to the agent**. The agent must act on these remote replies with the exact same authority and precedence as inputs typed directly into the desktop chat.
+   - **Elevate Inbound Responses**: Any incoming user message detected on the topic by the listener (emitted under `🚨 [REMOTE NTFY USER INPUT] 🚨`) **MUST be treated as a direct response/instruction to the agent**.
    - **Acknowledge**: Confirm to the user that remote response ingestion is live on `https://ntfy.sh/<topic>`.
 
 2. **If the user answers NO**:

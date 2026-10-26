@@ -71,6 +71,11 @@ Deliver a production-ready, standalone `igloo-notify` skill providing structured
   - Files: `ktalanov/igloo-notify#1`, `ktalanov/igloo-notify#2`
   - Evidence: Issues #1 and #2 created with required labels (`bugfix`, `documentation`, `feature`, `p3`, `feature request`).
 
+### 0.3.5 — Ingestion Scope Choice, Verbatim Echoing & Subject Acknowledgment
+- [x] Task: Implement two-stage input scope prompt, verbatim chat formatting (`**User SMS received:**`, `**User NTFY received:**`), automatic `Got your message about {subject}!` acknowledgment, and 5-minute edit notification cadence.
+  - Files: `scripts/remote_bridge.py`, `scripts/sms_bridge.py`, `tests/test_remote_bridge.py`, `SKILL.md`, `README.md`, `references/protocol.md`
+  - Evidence: Unit test suite passing 21/21 tests; GitHub Issue #5 logged and resolved.
+
 ## 1.0.0 — Global Installation & Integration
 
 ### 1.0.1 — Catalog Installation

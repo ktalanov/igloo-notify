@@ -79,7 +79,31 @@ def send_sms(body: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def check_inbound_sms() -> list[dict]:
+def format_sms_chat_echo(body: str) -> str:
+    """Format inbound SMS text verbatim for the chat stream."""
+    return f"**User SMS received:** {body}"
+
+
+def extract_subject(text: str, max_words: int = 6) -> str:
+    """Extract a concise subject summary from an inbound message for acknowledgments."""
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return "your update"
+    words = cleaned.split()
+    if len(words) <= max_words:
+        subject = cleaned.rstrip(".?!,;:")
+    else:
+        subject = " ".join(words[:max_words]).rstrip(".?!,;:") + "..."
+    return subject
+
+
+def acknowledge_sms(subject: str) -> dict:
+    """Send immediate standardized receipt confirmation back to user phone."""
+    ack_body = f"Got your message about {subject}!"
+    return send_sms(ack_body)
+
+
+def check_inbound_sms(auto_ack: bool = False) -> list[dict]:
     sid, token, from_num, to_num = get_twilio_credentials()
     url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json?To={urllib.parse.quote(from_num)}&PageSize=10"
 
@@ -109,6 +133,12 @@ def check_inbound_sms() -> list[dict]:
                 new_messages.append(msg)
                 with open(SEEN_FILE, "a", encoding="utf-8") as f:
                     f.write(f"{msg_sid}\n")
+                if auto_ack:
+                    subject = extract_subject(msg.get("body", ""))
+                    try:
+                        acknowledge_sms(subject)
+                    except Exception as e:
+                        print(f"[!] Warning: failed to auto-acknowledge SMS {msg_sid}: {e}", file=sys.stderr)
 
     return new_messages
 
@@ -117,6 +147,7 @@ def main():
     parser = argparse.ArgumentParser(description="Twilio SMS Bridge for igloo-notify")
     parser.add_argument("--send", help="Send SMS body to user's phone")
     parser.add_argument("--check", action="store_true", help="Check for newly received SMS replies")
+    parser.add_argument("--auto-ack", action="store_true", help="Automatically acknowledge incoming SMS with 'Got your message about {subject}!'")
     parser.add_argument("--query-status", action="store_true", help="Send standard 5-minute health check SMS")
     args = parser.parse_args()
 
@@ -130,18 +161,21 @@ def main():
         print(f"[✓] Status Query SMS Sent: {res.get('sid')} -> {res.get('to')}")
 
     if args.check:
-        new_msgs = check_inbound_sms()
+        new_msgs = check_inbound_sms(auto_ack=args.auto_ack)
         if not new_msgs:
             print("[*] No new inbound SMS.")
         for msg in new_msgs:
+            body = msg.get("body", "")
+            subject = extract_subject(body)
             print(
                 f"\n======================================================================\n"
                 f"🚨 [REMOTE SMS USER INPUT] 🚨\n"
                 f"From: {msg.get('from')}\n"
                 f"Time: {msg.get('date_sent')}\n"
                 f"SID:  {msg.get('sid')}\n"
+                f"Subject: {subject}\n"
                 f"----------------------------------------------------------------------\n"
-                f"{msg.get('body')}\n"
+                f"{format_sms_chat_echo(body)}\n"
                 f"======================================================================\n"
             )
 
