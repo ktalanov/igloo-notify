@@ -58,6 +58,10 @@ class TestBridgeListener(unittest.TestCase):
         self.listener.record_seen("msg-unique-001")
         self.assertIn("msg-unique-001", self.listener.seen_ids)
 
+    def test_once_flag_behavior(self):
+        once_listener = BridgeListener(topic="test-topic", state_dir=Path("/tmp/igloo_notify_test"), once=True)
+        self.assertTrue(once_listener.once)
+
 
 class TestNotifyBridge(unittest.TestCase):
     def test_dry_run_formatting(self):
